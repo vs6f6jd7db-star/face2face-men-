@@ -1,7 +1,139 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Face2Face Yönetim</title><style>body{font-family:system-ui;background:#f7f6ef;color:#173d32;margin:0}.wrap{max-width:900px;margin:auto;padding:20px}h1{color:#0d5b45}.box,.cat{background:#fff;border:1px solid #dce9e3;border-radius:16px;padding:16px;margin:12px 0}input{padding:10px;border:1px solid #ccdcd5;border-radius:10px;width:100%}button{padding:10px 13px;border:0;border-radius:10px;background:#0d5b45;color:white;font-weight:700;cursor:pointer}.secondary{background:#e4eee9;color:#0d5b45}.danger{background:#9c3434}.row{display:grid;grid-template-columns:1fr 150px auto auto;gap:8px;margin:8px 0;align-items:center}.top{display:flex;gap:8px;flex-wrap:wrap}.hidden{display:none}.muted{color:#6b7f78;font-size:13px}@media(max-width:650px){.row{grid-template-columns:1fr 100px}.row button{width:100%}}</style></head><body><div class="wrap"><h1>Face2Face Yönetim</h1><div id="login" class="box"><p>Yönetici hesabınla giriş yap.</p><input id="email" placeholder="E-posta"><br><br><input id="pass" type="password" placeholder="Şifre"><br><br><button onclick="signIn()">Giriş yap</button><p id="msg" class="muted"></p></div><div id="panel" class="hidden"><div class="top"><button onclick="saveDraft()">Taslağı Kaydet</button><button onclick="publish()">Yayınla</button><button class="secondary" onclick="addCat()">Kategori Ekle</button><button class="secondary" onclick="signOut()">Çıkış</button></div><p class="muted">Taslağı Kaydet müşterilerin gördüğü menüyü değiştirmez. Yalnızca “Yayınla” canlı menüyü günceller.</p><div id="cats"></div></div></div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script><script>
-const sb=supabase.createClient(F2F_CONFIG.url,F2F_CONFIG.anonKey);let menu=[];const E=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-async function signIn(){let r=await sb.auth.signInWithPassword({email:email.value,password:pass.value});msg.textContent=r.error?r.error.message:'';if(!r.error)start()}async function signOut(){await sb.auth.signOut();location.reload()}async function start(){login.classList.add('hidden');panel.classList.remove('hidden');let r=await sb.from('menu_drafts').select('payload').eq('id',1).single();if(r.data)menu=r.data.payload;else menu=await fetch('menu.json').then(r=>r.json());render()}
-function render(){cats.innerHTML=menu.map((c,ci)=>`<div class="cat"><div class="row"><input value="${E(c.name)}" onchange="menu[${ci}].name=this.value"><span></span><button class="secondary" onclick="addItem(${ci})">Ürün +</button><button class="danger" onclick="menu.splice(${ci},1);render()">Sil</button></div>${c.items.map((i,ii)=>`<div class="row"><input value="${E(i.name)}" onchange="menu[${ci}].items[${ii}].name=this.value"><input value="${E(i.price)}" onchange="menu[${ci}].items[${ii}].price=this.value"><button class="secondary" onclick="menu[${ci}].items[${ii}].visible=!menu[${ci}].items[${ii}].visible;render()">${i.visible===false?'Göster':'Gizle'}</button><button class="danger" onclick="menu[${ci}].items.splice(${ii},1);render()">Sil</button></div>`).join('')}</div>`).join('')}
-function addCat(){menu.push({name:'Yeni Kategori',sort:menu.length,items:[]});render()}function addItem(ci){menu[ci].items.push({name:'Yeni Ürün',price:'0 TL',visible:true,sort:menu[ci].items.length});render()}
-async function saveDraft(){let r=await sb.from('menu_drafts').upsert({id:1,payload:menu,updated_at:new Date().toISOString()});alert(r.error?'Hata: '+r.error.message:'Taslak kaydedildi. Müşteriler henüz görmüyor.')}async function publish(){if(!confirm('Taslağı müşterilere yayınlamak istiyor musun?'))return;let r=await sb.from('published_menu').upsert({id:1,payload:menu,published_at:new Date().toISOString()});alert(r.error?'Hata: '+r.error.message:'Menü yayınlandı.')}sb.auth.getSession().then(x=>{if(x.data.session)start()});
-</script></body></html>
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Face2Face Yönetim</title>
+<style>
+:root{--g:#0d5b45;--bg:#f4f8f6;--line:#dcebe4;--red:#9c3434}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17352d}
+.wrap{max-width:1000px;margin:auto;padding:20px}h1{color:var(--g)}.box,.cat{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0}
+input{padding:11px;border:1px solid #ccdcd5;border-radius:10px;width:100%}button{padding:10px 13px;border:0;border-radius:10px;background:var(--g);color:white;font-weight:700;cursor:pointer}
+.secondary{background:#e4eee9;color:var(--g)}.danger{background:var(--red)}.top{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.hidden{display:none}
+.row{display:grid;grid-template-columns:1fr 150px auto auto;gap:8px;margin:8px 0;align-items:center}.muted{color:#6b7f78;font-size:13px}#msg{white-space:pre-wrap}
+@media(max-width:650px){.row{grid-template-columns:1fr 100px}.row button{width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Face2Face Yönetim</h1>
+<div id="login" class="box">
+<p>Yönetici hesabınla giriş yap.</p>
+<input id="email" type="email" placeholder="E-posta"><br><br>
+<input id="pass" type="password" placeholder="Şifre"><br><br>
+<button onclick="signIn()">Giriş yap</button>
+<p id="msg" class="muted"></p>
+</div>
+
+<div id="panel" class="hidden">
+<div class="top">
+<button onclick="saveDraft()">Taslağı Kaydet</button>
+<button onclick="publishMenu()">Yayınla</button>
+<button class="secondary" onclick="addCat()">Kategori Ekle</button>
+<button class="secondary" onclick="signOut()">Çıkış</button>
+</div>
+<p class="muted">“Taslağı Kaydet” müşterilerin gördüğü menüyü değiştirmez. Yalnızca “Yayınla” canlı menüyü günceller.</p>
+<div id="status" class="muted"></div>
+<div id="cats"></div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const DEFAULT_MENU=[{"name": "Özel Lezzetler", "sort": 0, "items": [{"name": "Merlyn", "price": "220 TL", "visible": true}, {"name": "Lotus Breeze (Latte)", "price": "220 TL", "visible": true}, {"name": "Pistachio Latte", "price": "220 TL", "visible": true}, {"name": "Pistachio Dream", "price": "230 TL", "visible": true}, {"name": "Diana", "price": "220 TL", "visible": true}, {"name": "Medusa", "price": "220 TL", "visible": true}, {"name": "Toffe Nut", "price": "220 TL", "visible": true}, {"name": "Grinch", "price": "230 TL", "visible": true}, {"name": "Ares", "price": "230 TL", "visible": true}, {"name": "Athena", "price": "230 TL", "visible": true}, {"name": "Hades", "price": "230 TL", "visible": true}, {"name": "Hector", "price": "230 TL", "visible": true}, {"name": "Poseidon", "price": "230 TL", "visible": true}, {"name": "Zeus", "price": "230 TL", "visible": true}, {"name": "Lotus Latte", "price": "230 TL", "visible": true}, {"name": "Poka Moka", "price": "230 TL", "visible": true}, {"name": "Toffe Nut", "price": "230 TL", "visible": true}]}, {"name": "Klasikler", "sort": 1, "items": [{"name": "Espresso Single", "price": "100 TL", "visible": true}, {"name": "Espresso Double", "price": "130 TL", "visible": true}, {"name": "Freddo Espresso", "price": "170 TL", "visible": true}, {"name": "Churchill", "price": "155 TL", "visible": true}, {"name": "Cool Lime", "price": "200 TL", "visible": true}, {"name": "Limonata", "price": "160 TL", "visible": true}, {"name": "Americano", "price": "170 TL", "visible": true}, {"name": "Cappuccino", "price": "190 TL", "visible": true}, {"name": "Caramel Macchiato", "price": "220 TL", "visible": true}, {"name": "Chai Tea", "price": "200 TL", "visible": true}, {"name": "Cortado", "price": "170 / 190 TL", "visible": true}, {"name": "Flat White", "price": "190 TL", "visible": true}, {"name": "Filtre Kahve", "price": "150 TL", "visible": true}, {"name": "Sütlü Filtre Kahve", "price": "160 TL", "visible": true}, {"name": "Latte", "price": "180 TL", "visible": true}, {"name": "Mocha", "price": "220 TL", "visible": true}, {"name": "White Mocha", "price": "220 TL", "visible": true}, {"name": "Salep", "price": "180 TL", "visible": true}, {"name": "Hot Chocolate", "price": "200 TL", "visible": true}, {"name": "Berry Hibiscus", "price": "210 TL", "visible": true}, {"name": "Mojito", "price": "170 TL", "visible": true}]}, {"name": "Tatlılar", "sort": 2, "items": [{"name": "Bella Vista", "price": "230 TL", "visible": true}, {"name": "Blue Berries", "price": "230 TL", "visible": true}, {"name": "Fıstık Rüyası", "price": "230 TL", "visible": true}, {"name": "Frambuaz Cheesecake", "price": "230 TL", "visible": true}, {"name": "Marlenka", "price": "250 TL", "visible": true}, {"name": "Limonlu Cheesecake", "price": "230 TL", "visible": true}, {"name": "Mono Latte", "price": "230 TL", "visible": true}, {"name": "Orman Meyveli Pasta", "price": "230 TL", "visible": true}, {"name": "Dubai Mono Pasta", "price": "230 TL", "visible": true}, {"name": "Mozaik Pasta", "price": "210 TL", "visible": true}, {"name": "Oreo Cheesecake", "price": "230 TL", "visible": true}, {"name": "San Sebastian", "price": "230 TL", "visible": true}, {"name": "Tiramisu", "price": "230 TL", "visible": true}, {"name": "Belçika Çikolatalı Pasta", "price": "230 TL", "visible": true}, {"name": "Devils", "price": "230 TL", "visible": true}, {"name": "Sufle", "price": "230 TL", "visible": true}, {"name": "Brownie", "price": "230 TL", "visible": true}, {"name": "Brownie Üç Çikolatalı", "price": "230 TL", "visible": true}, {"name": "Yaban Mersinli Krep", "price": "230 TL", "visible": true}, {"name": "Magnolia", "price": "230 TL", "visible": true}, {"name": "Red Velvet", "price": "230 TL", "visible": true}, {"name": "Lotus Cheesecake", "price": "230 TL", "visible": true}, {"name": "Cookie", "price": "170 TL", "visible": true}, {"name": "Snickers", "price": "230 TL", "visible": true}]}, {"name": "Iced Tea", "sort": 3, "items": [{"name": "Mango Ice Tea", "price": "190 TL", "visible": true}, {"name": "Peach Ice Tea", "price": "190 TL", "visible": true}, {"name": "Strawberry Ice Tea", "price": "190 TL", "visible": true}]}, {"name": "Bubbles", "sort": 4, "items": [{"name": "Mango Bubbles", "price": "230 TL", "visible": true}, {"name": "Blackberry Bubbles", "price": "230 TL", "visible": true}, {"name": "Green Apple Bubbles", "price": "230 TL", "visible": true}, {"name": "Strawberry Bubbles", "price": "230 TL", "visible": true}]}, {"name": "Matcha", "sort": 5, "items": [{"name": "Matcha Latte", "price": "210 TL", "visible": true}, {"name": "Strawberry Matcha Latte", "price": "230 TL", "visible": true}, {"name": "Pistachio Matcha Latte", "price": "230 TL", "visible": true}, {"name": "Coconut Matcha Latte", "price": "230 TL", "visible": true}, {"name": "Peach Matcha Latte", "price": "230 TL", "visible": true}]}, {"name": "Frozen Çeşitleri", "sort": 6, "items": [{"name": "Red Berry Frozen", "price": "230 TL", "visible": true}, {"name": "Mint Frozen", "price": "230 TL", "visible": true}, {"name": "Banana Frozen", "price": "230 TL", "visible": true}, {"name": "Strawberry Frozen", "price": "230 TL", "visible": true}, {"name": "Blueberry Frozen", "price": "230 TL", "visible": true}, {"name": "Mango Frozen", "price": "230 TL", "visible": true}, {"name": "Watermelon Frozen", "price": "230 TL", "visible": true}, {"name": "Green Apple Frozen", "price": "230 TL", "visible": true}]}, {"name": "Milkshake", "sort": 7, "items": [{"name": "Hazelnut Milkshake", "price": "230 TL", "visible": true}, {"name": "Caramel Milkshake", "price": "230 TL", "visible": true}, {"name": "Red Berry Milkshake", "price": "230 TL", "visible": true}, {"name": "Pistachio Milkshake", "price": "230 TL", "visible": true}, {"name": "Vanilla Milkshake", "price": "230 TL", "visible": true}, {"name": "Chocolate Milkshake", "price": "230 TL", "visible": true}, {"name": "Strawberry Milkshake", "price": "230 TL", "visible": true}, {"name": "Salted Caramel Milkshake", "price": "230 TL", "visible": true}, {"name": "Banana Milkshake", "price": "230 TL", "visible": true}, {"name": "Oreo Milkshake", "price": "240 TL", "visible": true}, {"name": "Lotus Milkshake", "price": "240 TL", "visible": true}]}, {"name": "Sandviç • Tost • Pizza", "sort": 8, "items": [{"name": "Hindi Füme Bagel Sandviç", "price": "210 TL", "visible": true}, {"name": "Dana Jambon Sandviç", "price": "210 TL", "visible": true}, {"name": "Dört Peynirli Haşhaşlı", "price": "200 TL", "visible": true}, {"name": "Jumbo Karışık Tost", "price": "190 TL", "visible": true}, {"name": "Jumbo Kaşarlı Tost", "price": "180 TL", "visible": true}, {"name": "Küçük Boy Pizza", "price": "200 TL", "visible": true}, {"name": "Karışık Pizza", "price": "350 TL", "visible": true}, {"name": "Dana Roast Beef", "price": "190 TL", "visible": true}]}, {"name": "Çaylar & Diğer İçecekler", "sort": 9, "items": [{"name": "Ada Çayı", "price": "180 TL", "visible": true}, {"name": "Mavi Kelebek Çayı", "price": "180 TL", "visible": true}, {"name": "Elma Tarçın Çayı", "price": "180 TL", "visible": true}, {"name": "Form Çayı", "price": "180 TL", "visible": true}, {"name": "Kış Çayı", "price": "180 TL", "visible": true}, {"name": "Kuşburnu", "price": "180 TL", "visible": true}, {"name": "Melisa Çayı", "price": "180 TL", "visible": true}, {"name": "Nane Limon", "price": "180 TL", "visible": true}, {"name": "Papatya Çayı", "price": "180 TL", "visible": true}, {"name": "Rezene Çayı", "price": "180 TL", "visible": true}, {"name": "Yasemin Çayı", "price": "180 TL", "visible": true}, {"name": "Yeşil Çay", "price": "180 TL", "visible": true}, {"name": "Ihlamur Çayı", "price": "180 TL", "visible": true}, {"name": "Zencefil Limon Çayı", "price": "180 TL", "visible": true}, {"name": "Nane Limon Çayı", "price": "180 TL", "visible": true}, {"name": "Türk Kahvesi", "price": "130 TL", "visible": true}, {"name": "Türk Kahvesi Double", "price": "150 TL", "visible": true}, {"name": "Menengiç", "price": "130 TL", "visible": true}, {"name": "Dağ Çilekli", "price": "130 TL", "visible": true}, {"name": "Dibek", "price": "130 TL", "visible": true}, {"name": "Damla Sakızlı", "price": "130 TL", "visible": true}, {"name": "Bardak Çay", "price": "60 TL", "visible": true}, {"name": "Fincan Çay", "price": "80 TL", "visible": true}, {"name": "Su", "price": "40 TL", "visible": true}, {"name": "Cola Zero", "price": "120 TL", "visible": true}, {"name": "Organik Meyve Suları", "price": "130 TL", "visible": true}, {"name": "Sade Soda", "price": "80 TL", "visible": true}, {"name": "Elmalı Soda", "price": "80 TL", "visible": true}, {"name": "Limon Soda", "price": "80 TL", "visible": true}, {"name": "Karpuz Çilek Soda", "price": "80 TL", "visible": true}, {"name": "Redbull", "price": "160 TL", "visible": true}]}, {"name": "Cold Brew", "sort": 10, "items": [{"name": "Cold Brew", "price": "220 TL", "visible": true}]}, {"name": "Ekstralar", "sort": 11, "items": [{"name": "Ekstra Bardak / Buzlu Bardak", "price": "30 TL", "visible": true}, {"name": "Ekstra Shot", "price": "35 TL", "visible": true}, {"name": "Ekstra Şurup", "price": "35 TL", "visible": true}]}];
+let menu=[];
+let sb;
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function status(t){document.getElementById('status').textContent=t||'';}
+function message(t){document.getElementById('msg').textContent=t||'';}
+
+function initClient(){
+  if(!window.F2F_CONFIG || !F2F_CONFIG.url || !F2F_CONFIG.anonKey) throw new Error("config.js ayarları bulunamadı.");
+  if(!window.supabase || !window.supabase.createClient) throw new Error("Supabase kütüphanesi yüklenemedi.");
+  sb=window.supabase.createClient(F2F_CONFIG.url,F2F_CONFIG.anonKey);
+}
+
+async function signIn(){
+  try{
+    message("Giriş yapılıyor...");
+    const email=document.getElementById('email').value.trim();
+    const password=document.getElementById('pass').value;
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if(error) throw error;
+    if(!data.session) throw new Error("Oturum açılamadı.");
+    await start();
+  }catch(e){message("Hata: "+(e.message||e));}
+}
+
+async function signOut(){
+  await sb.auth.signOut();
+  document.getElementById('panel').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
+  message("Çıkış yapıldı.");
+}
+
+async function start(){
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('panel').classList.remove('hidden');
+  status("Menü yükleniyor...");
+  try{
+    let r=await sb.from('menu_drafts').select('payload').eq('id',1).maybeSingle();
+    if(r.error) throw r.error;
+    if(r.data?.payload) menu=r.data.payload;
+    else {
+      r=await sb.from('published_menu').select('payload').eq('id',1).maybeSingle();
+      if(r.error) throw r.error;
+      menu=r.data?.payload || DEFAULT_MENU;
+    }
+    render(); status("Hazır.");
+  }catch(e){status("Yükleme hatası: "+(e.message||e));}
+}
+
+function render(){
+  const cats=document.getElementById('cats');
+  cats.innerHTML=menu.map((c,ci)=>`
+    <div class="cat">
+      <div class="top">
+        <input value="${esc(c.name)}" onchange="menu[${ci}].name=this.value">
+        <button class="secondary" onclick="addItem(${ci})">Ürün Ekle</button>
+        <button class="danger" onclick="menu.splice(${ci},1);render()">Kategoriyi Sil</button>
+      </div>
+      ${(c.items||[]).map((i,ii)=>`
+        <div class="row">
+          <input value="${esc(i.name)}" onchange="menu[${ci}].items[${ii}].name=this.value">
+          <input value="${esc(i.price)}" onchange="menu[${ci}].items[${ii}].price=this.value">
+          <button class="secondary" onclick="menu[${ci}].items[${ii}].visible=!menu[${ci}].items[${ii}].visible;render()">${i.visible===false?'Göster':'Gizle'}</button>
+          <button class="danger" onclick="menu[${ci}].items.splice(${ii},1);render()">Sil</button>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+function addCat(){menu.push({name:'Yeni Kategori',sort:menu.length,items:[]});render();}
+function addItem(ci){menu[ci].items.push({name:'Yeni Ürün',price:'0 TL',visible:true});render();}
+
+async function saveDraft(){
+  status("Taslak kaydediliyor...");
+  const {error}=await sb.from('menu_drafts').upsert({id:1,payload:menu,updated_at:new Date().toISOString()});
+  status(error ? "Hata: "+error.message : "Taslak kaydedildi. Müşteri menüsü değişmedi.");
+}
+
+async function publishMenu(){
+  status("Yayınlanıyor...");
+  const d=await sb.from('menu_drafts').upsert({id:1,payload:menu,updated_at:new Date().toISOString()});
+  if(d.error){status("Hata: "+d.error.message);return;}
+  const p=await sb.from('published_menu').upsert({id:1,payload:menu,published_at:new Date().toISOString()});
+  status(p.error ? "Hata: "+p.error.message : "Menü yayınlandı.");
+}
+
+(async()=>{
+  try{
+    initClient();
+    const {data}=await sb.auth.getSession();
+    if(data.session) await start();
+  }catch(e){message("Bağlantı hatası: "+(e.message||e));}
+})();
+</script>
+</body>
+</html>
